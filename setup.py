@@ -16,7 +16,7 @@ INSTALL_REQUIRES = [
 
 setuptools.setup(
     name="django-googledrive-storage",
-    version="1.6.1",
+    version="1.6.2",
     author="Gian Luca Dalla Torre",
     author_email="gianluca.dallatorre@gmail.com",
     description=(
