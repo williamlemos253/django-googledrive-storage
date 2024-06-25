@@ -291,31 +291,9 @@ class GoogleDriveStorage(Storage):
             q=q, fields='nextPageToken, files(*)').execute()
         items = results.get('files', [])
         for item in items:
-            if split_filename[0] == item['name']:
+            if split_filename[0] in item['name']:
                 return item
-        #return None
-        return self._check_id_exists(filename)
-
-
-    def _check_id_exists(self, id):
-        """
-        Check if a file with specific parameters exists in Google Drive.
-        :returns: dict containing file / folder data if exists or None if does not exists
-        """  # noqa: E501
-        if len(id) == 0:
-            # This is the lack of directory at the beginning of a 'file.txt'
-            # Since the target file lacks directories, the assumption
-            # is that it belongs at '/'
-            return self._drive_service.files().get(fileId='root', fields='files(id,name,originalFilename,webContentLink)').execute()
-        # This is a file, checking if exists
-        try:
-            results = self._drive_service.files().get(fileId=id, fields='id,name,originalFilename,webContentLink').execute()
-            return results
-            # items = results.get('files', [])
-            # if len(items) > 0:
-            #     return items[0]
-        except:
-            return None
+        return None
 
     # Methods that had to be implemented
     # to create a valid storage for Django
@@ -334,25 +312,6 @@ class GoogleDriveStorage(Storage):
             _, done = downloader.next_chunk()
         fh.seek(0)
         return File(fh, name)
-
-    def save(self, name, content, max_length=None):
-        """
-        Save new content to the file specified by name. The content should be
-        a proper File object or any Python file-like object, ready to be read
-        from the beginning.
-        """
-        # Get the proper name for the file, as it will actually be saved.
-        if name is None:
-            name = content.name
-
-        if not hasattr(content, "chunks"):
-            content = File(content, name)
-
-        name = self.get_available_name(name, max_length=max_length)
-        name = self._save(name, content)
-        # Ensure that the name returned from the storage system is still valid.
-        #validate_file_name(name, allow_relative_path=True)
-        return name
 
     def _save(self, name, content):
         name = os.path.join(settings.GOOGLE_DRIVE_STORAGE_MEDIA_ROOT, name)
@@ -375,26 +334,23 @@ class GoogleDriveStorage(Storage):
             body['parents'] = [parent_id]
         file_data = self._drive_service.files().create(
             body=body,
-            media_body=media_body,
-            fields='id,name,originalFilename,exportLinks,webContentLink').execute()
+            media_body=media_body).execute()
 
         # Setting up permissions
         for p in self._permissions:
             self._drive_service.permissions().create(
                 fileId=file_data['id'], body={**p.raw}).execute()
 
-        return {'id': file_data['id'], 'name': file_data.get('name'), 'original_name': file_data.get('originalFilename'), 'url': file_data['webContentLink']}
- 
+        return file_data.get('originalFilename', file_data.get('name'))
+
     def delete(self, name):
         """
         Deletes the specified file from the storage system.
         """
-        # file_data = self._check_file_exists(name)
-        # if file_data is not None:
-        #     self._drive_service.files().delete(
-        #         fileId=file_data['id']).execute()
-        if id:
-            self._drive_service.files().delete(fileId=id).execute()
+        file_data = self._check_file_exists(name)
+        if file_data is not None:
+            self._drive_service.files().delete(
+                fileId=file_data['id']).execute()
 
     def exists(self, name):
         """
@@ -402,8 +358,7 @@ class GoogleDriveStorage(Storage):
         in the storage system, or False if the name is available for
         a new file.
         """
-        #return self._check_file_exists(name) is not None
-        return self._check_id_exists(name) is not None
+        return self._check_file_exists(name) is not None
 
     def listdir(self, path):
         """
@@ -443,27 +398,15 @@ class GoogleDriveStorage(Storage):
             return 0
         return file_data['size']
 
-    def url(self, id):
+    def url(self, name):
         """
         Returns an absolute URL where the file's contents can be accessed
         directly by a Web browser.
         """
-        #file_data = self._check_file_exists(name)
-        file_data = self._check_id_exists(id)
+        file_data = self._check_file_exists(name)
         if file_data is None:
             return None
         return file_data['webContentLink']
-
-    def data(self, id):
-        """
-        Returns an absolute URL where the file's contents can be accessed
-        directly by a Web browser.
-        """
-        #file_data = self._check_file_exists(name)
-        file_data = self._check_id_exists(id)
-        if file_data is None:
-            return None
-        return {'url': file_data.get('webContentLink',''), 'id': id, 'name': file_data['name'], 'original_name': file_data['originalFilename']}
 
     def accessed_time(self, name):
         """
